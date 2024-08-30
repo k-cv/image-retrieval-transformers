@@ -131,6 +131,19 @@ def main(args):
             shuffle=False
         )
 
+    # 別の特徴抽出モデルのロード
+    feature_extractor = create_model(
+        '別のモデル名',  # 使用する別のモデルの名前
+        pretrained=True,
+        num_classes=0,
+    )
+    # パラメータの凍結
+    for param in feature_extractor.parameters():
+        param.requires_grad = False
+
+    # デバイスに転送
+    feature_extractor.to(device)
+
     # get model
     model = create_model(
         args.model,

@@ -22,6 +22,7 @@ def train(
         optimizer: torch.optim.Optimizer,
         device: torch.device,
         loss_scaler, max_norm,
+        feature_extractor: torch.nn.Module,  # 新しく追加
         log_writer=None,
         args=None
 ):
@@ -41,14 +42,19 @@ def train(
         images = images.to(device)
         targets = targets.to(device)
 
-        features = encoder(images)
+        # 凍結されたモデルから特徴を抽出
+        with torch.no_grad():
+            features = feature_extractor(images)
+        
+        # この特徴をSiamese Networkに入力
+        features = encoder(features)
         if isinstance(features, tuple):
             features = features[0]
         features = F.normalize(features, dim=1)
 
         if encoder_k is not None:
             with torch.no_grad(), torch.cuda.amp.autocast():
-                features_k = encoder_k(images)
+                features_k = encoder_k(features)
                 if isinstance(features_k, tuple):
                     features_k = features_k[0]
                 features_k = F.normalize(features_k, dim=1)
@@ -94,6 +100,7 @@ def train(
 
     save_path = os.path.join(args.output_dir, "encoder.pth")
     torch.save(encoder.state_dict(), save_path)
+
 
 
 @torch.no_grad()
