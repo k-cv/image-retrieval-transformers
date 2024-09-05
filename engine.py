@@ -11,6 +11,8 @@ from tqdm import tqdm
 from metric import recall
 from xbm import XBM, momentum_update_key_encoder
 
+import numpy as np
+
 
 def train(
         encoder: torch.nn.Module,
@@ -22,7 +24,7 @@ def train(
         optimizer: torch.optim.Optimizer,
         device: torch.device,
         loss_scaler, max_norm,
-        feature_extractor: torch.nn.Module,  # 新しく追加
+        saved_features: torch.Tensor,  # 新しく追加
         log_writer=None,
         args=None
 ):
@@ -39,14 +41,15 @@ def train(
             _train_loader = iter(data_loader)
             images, targets = _train_loader.next()
 
-        images = images.to(device)
         targets = targets.to(device)
-
-        # 凍結されたモデルから特徴を抽出
-        with torch.no_grad():
-            features = feature_extractor(images)
         
-        # この特徴をSiamese Networkに入力
+        # 特徴量をデバイスに転送
+        features = saved_features.to(device)
+
+        # 必要に応じてトークン長次元を統合するなどの処理を行う
+        features = features.view(features.size(0), -1)  # [バッチサイズ, トークン長×次元数]
+
+        # Siamese Network (encoder)に特徴量を渡す
         features = encoder(features)
         if isinstance(features, tuple):
             features = features[0]
