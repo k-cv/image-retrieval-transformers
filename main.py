@@ -47,7 +47,7 @@ def get_args_parser():
     parser.add_argument('--weight-decay', type=float, default=5e-4, help='weight decay (default: 5e-4)')
 
     # Dataset parameters
-    parser.add_argument('--dataset', default='cub200', choices=['cub200', 'sop', 'inshop'], type=str, help='dataset path')
+    parser.add_argument('--dataset', default='cub200', choices=['cub200', 'sop', 'inshop', 'cad'], type=str, help='dataset path')
     parser.add_argument('--data-path', default='/data/CUB_200_2011', type=str, help='dataset path')
     parser.add_argument('--m', default=0, type=int, help="sample m images per class")
     parser.add_argument('--rank', default=[1, 2, 4, 8], nargs="+", type=int, help="compute recall@r")
@@ -97,7 +97,7 @@ def main(args):
     # get training/query/gallery dataset
     dataset_train, dataset_query, dataset_gallery = get_dataset(args)
     logging.info(f"Number of training examples: {len(dataset_train)}")
-    logging.info(f"Number of query examples: {len(dataset_query)}")
+    # logging.info(f"Number of query examples: {len(dataset_query)}")
 
     sampler_train = RandomSampler(dataset_train)
     if args.m: sampler_train = MPerClassSampler(dataset_train.labels, m=args.m, batch_size=args.batch_size)
@@ -111,14 +111,14 @@ def main(args):
         drop_last=False,
     )
 
-    data_loader_query = torch.utils.data.DataLoader(
-        dataset_query,
-        batch_size=args.batch_size,
-        num_workers=args.num_workers,
-        pin_memory=args.pin_mem,
-        drop_last=False,
-        shuffle=False
-    )
+    # data_loader_query = torch.utils.data.DataLoader(
+    #     dataset_query,
+    #     batch_size=args.batch_size,
+    #     num_workers=args.num_workers,
+    #     pin_memory=args.pin_mem,
+    #     drop_last=False,
+    #     shuffle=False
+    # )
 
     data_loader_gallery = None
     if dataset_gallery is not None:
@@ -131,23 +131,6 @@ def main(args):
             shuffle=False
         )
 
-    # # 別の特徴抽出モデルのロード
-    # feature_extractor = create_model(
-    #     '別のモデル名',  # 使用する別のモデルの名前
-    #     pretrained=True,
-    #     num_classes=0,
-    # )
-    # # パラメータの凍結
-    # for param in feature_extractor.parameters():
-    #     param.requires_grad = False
-
-    # # デバイスに転送
-    # feature_extractor.to(device)
-
-    # Vitruvionモデルで保存された特徴量をロード
-    # saved_features = torch.load(args.feature_path)
-    # logging.info(f"Loaded features shape: {saved_features.shape}")
-
     # get model
     model = create_model(
         args.model,
@@ -157,6 +140,7 @@ def main(args):
         drop_path_rate=args.drop_path,
         drop_block_rate=None,
     )
+    print(model)
     momentum_encoder = None
     if args.encoder_momentum is not None:
         momentum_encoder = create_model(
@@ -214,13 +198,13 @@ def main(args):
 
     logging.info("Start evaluation job")
 
-    evaluate(
-        data_loader_query,
-        data_loader_gallery,
-        model,
-        device,
-        rank=sorted(args.rank)
-    )
+    # evaluate(
+    #     data_loader_query,
+    #     data_loader_gallery,
+    #     model,
+    #     device,
+    #     rank=sorted(args.rank)
+    # )
 
     total_time = time.time() - start_time
     total_time_str = str(datetime.timedelta(seconds=int(total_time)))

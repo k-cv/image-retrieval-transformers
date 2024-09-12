@@ -1,6 +1,7 @@
 from .cub200 import Cub200Dataset
 from .sop import SOPDataset
 from .inshop import InShopDataset
+from .cad import CADImageDataset
 
 
 def get_dataset(args):
@@ -21,5 +22,22 @@ def get_dataset(args):
         train   = InShopDataset(args.data_path, split="train")
         query   = InShopDataset(args.data_path, split="query")
         gallery = InShopDataset(args.data_path, split="gallery")
+
+    # CADデータセットの追加
+    if args.dataset == 'cad':
+        train   = CADImageDataset(
+            label_file='/home/kfujii/image-retrieval-transformers/data/CAD/label.txt',
+            data_dir='/home/kfujii/vitruvion/outputs/2024-09-05/12-54-06_all_images',
+            input_size=args.input_size,
+            split="train"
+        )
+        # query   = CADImageDataset(
+        #     label_file='/home/kfujii/image-retrieval-transformers/data/CAD/label.txt',
+        #     data_dir='/home/kfujii/vitruvion/outputs/2024-09-05/12-54-06_all_images',
+        #     input_size=args.input_size,
+        #     split="test"
+        # )
+        query = None
+        gallery = None  # CADデータセットではギャラリーデータが不要な場合
 
     return train, query, gallery

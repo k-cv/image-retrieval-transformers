@@ -11,8 +11,6 @@ from tqdm import tqdm
 from metric import recall
 from xbm import XBM, momentum_update_key_encoder
 
-import numpy as np
-
 
 def train(
         encoder: torch.nn.Module,
@@ -24,7 +22,6 @@ def train(
         optimizer: torch.optim.Optimizer,
         device: torch.device,
         loss_scaler, max_norm,
-        saved_features: torch.Tensor,  # 新しく追加
         log_writer=None,
         args=None
 ):
@@ -41,23 +38,19 @@ def train(
             _train_loader = iter(data_loader)
             images, targets = _train_loader.next()
 
+        images = images.to(device)
         targets = targets.to(device)
-        
-        # 特徴量をデバイスに転送
-        features = saved_features.to(device)
 
-        # 必要に応じてトークン長次元を統合するなどの処理を行う
-        features = features.view(features.size(0), -1)  # [バッチサイズ, トークン長×次元数]
-
-        # Siamese Network (encoder)に特徴量を渡す
-        features = encoder(features)
+        import pdb;pdb.set_trace()
+        features = encoder(images)
         if isinstance(features, tuple):
-            features = features[0]
+            # シーケンス長2のfeaturesとなる
+            features = features[:]
         features = F.normalize(features, dim=1)
 
         if encoder_k is not None:
             with torch.no_grad(), torch.cuda.amp.autocast():
-                features_k = encoder_k(features)
+                features_k = encoder_k(images)
                 if isinstance(features_k, tuple):
                     features_k = features_k[0]
                 features_k = F.normalize(features_k, dim=1)
@@ -103,7 +96,6 @@ def train(
 
     save_path = os.path.join(args.output_dir, "encoder.pth")
     torch.save(encoder.state_dict(), save_path)
-
 
 
 @torch.no_grad()

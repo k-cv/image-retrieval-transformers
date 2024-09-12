@@ -30,6 +30,8 @@ class XBM:
             return self.feats[:self.ptr], self.targets[:self.ptr]
 
     def enqueue_dequeue(self, feats, targets):
+        # シーケンス長 (130) の次元を平均化して、[バッチサイズ, 特徴次元] に変換
+        feats = feats.mean(dim=1)  # [batch_size, feature_dim]
         q_size = len(targets)
         if self.ptr + q_size > self.K:
             self.feats[-q_size:] = feats
