@@ -1,20 +1,21 @@
-import os
-import numpy as np
-from torchvision import transforms
-from PIL import Image
-
-# BaseDatasetをインポート
-from datasets.base_dataset import BaseDataset
+import torch
 
 class CADImageDataset(BaseDataset):
-    def __init__(self, label_file, data_dir=None, input_size=224, split="train", ignore_label=-1):
+    def __init__(self, label_file, data_dir=None, input_size=224, split="train", ignore_label=-1, index_file=None):
         """
         :param label_file: クラスラベルが記載されたファイル
         :param split: "train" or "test"
         :param ignore_label: ラベルが指定されていない場合の値（デフォルトは -1）
+        :param index_file: 内部インデックスとファイル名インデックスの対応を示すindex.pthファイルのパス
         """
         self.label_file = label_file
         self.ignore_label = ignore_label
+        self.index_file = index_file
+        self.encoder_index = None
+        
+        if self.index_file:
+            self.encoder_index = torch.load(self.index_file)  # index.pthファイルをロード
+        
         super(CADImageDataset, self).__init__(data_dir=data_dir, input_size=input_size, split=split)
         self.labels = self.load_labels(label_file)  # ラベルをロード
 
@@ -42,8 +43,14 @@ class CADImageDataset(BaseDataset):
         return labels_with_ignore
 
     def get_image_path(self, idx):
+        # index.pthのマッピングに基づいて、正しいファイルインデックスを取得
+        if self.encoder_index is not None:
+            actual_idx = self.encoder_index[idx].item()  # tensorから数値に変換
+        else:
+            actual_idx = idx  # index.pthがない場合はそのまま使用
+
         # idxに基づいて画像のパスを生成する
-        return f'/home/kfujii/vitruvion/outputs/2024-09-05/12-54-06_all_images/output_sketch_{idx}.png'
+        return f'/home/kfujii/vitruvion/outputs/2024-09-05/12-54-06_all_images/output_sketch_{actual_idx}.png'
 
     def __getitem__(self, index):
         # インデックスに基づいて画像をロード
