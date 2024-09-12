@@ -40,12 +40,10 @@ def train(
 
         images = images.to(device)
         targets = targets.to(device)
-
-        import pdb;pdb.set_trace()
         features = encoder(images)
         if isinstance(features, tuple):
             # シーケンス長2のfeaturesとなる
-            features = features[:]
+            features = features[0]
         features = F.normalize(features, dim=1)
 
         if encoder_k is not None:

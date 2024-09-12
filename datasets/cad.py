@@ -1,22 +1,31 @@
+import os
 import torch
+import numpy as np
+from torchvision import transforms
+from PIL import Image
+
+# BaseDatasetをインポート
+from datasets.base_dataset import BaseDataset
 
 class CADImageDataset(BaseDataset):
-    def __init__(self, label_file, data_dir=None, input_size=224, split="train", ignore_label=-1, index_file=None):
+    def __init__(self, label_file, data_dir=None, input_size=224, split="train", ignore_label=-1, index_file='/home/kfujii/vitruvion/encoder_index2.pth'):
         """
         :param label_file: クラスラベルが記載されたファイル
         :param split: "train" or "test"
         :param ignore_label: ラベルが指定されていない場合の値（デフォルトは -1）
-        :param index_file: 内部インデックスとファイル名インデックスの対応を示すindex.pthファイルのパス
+        :param index_file: index.pth ファイルのパス
+        :param input_size: 画像の入力サイズ (デフォルトは224)
         """
         self.label_file = label_file
         self.ignore_label = ignore_label
+        self.input_size = input_size  # input_size を初期化
         self.index_file = index_file
-        self.encoder_index = None
-        
-        if self.index_file:
-            self.encoder_index = torch.load(self.index_file)  # index.pthファイルをロード
-        
         super(CADImageDataset, self).__init__(data_dir=data_dir, input_size=input_size, split=split)
+        
+        # index.pth ファイルの読み込み
+        if self.index_file:
+            self.encoder_index = torch.load(self.index_file)
+        
         self.labels = self.load_labels(label_file)  # ラベルをロード
 
         # ラベルが有効（ignore_label でないもの）のデータのみを保持
@@ -43,13 +52,8 @@ class CADImageDataset(BaseDataset):
         return labels_with_ignore
 
     def get_image_path(self, idx):
-        # index.pthのマッピングに基づいて、正しいファイルインデックスを取得
-        if self.encoder_index is not None:
-            actual_idx = self.encoder_index[idx].item()  # tensorから数値に変換
-        else:
-            actual_idx = idx  # index.pthがない場合はそのまま使用
-
-        # idxに基づいて画像のパスを生成する
+        # index.pthを使って、idxを変換してから画像のパスを生成する
+        actual_idx = self.encoder_index[idx].item()  # index.pthに対応するファイルインデックスを取得
         return f'/home/kfujii/vitruvion/outputs/2024-09-05/12-54-06_all_images/output_sketch_{actual_idx}.png'
 
     def __getitem__(self, index):
@@ -60,7 +64,7 @@ class CADImageDataset(BaseDataset):
         # 画像を開き、transformを適用
         image = Image.open(image_path).convert('RGB')
         transform = transforms.Compose([
-            transforms.Resize((self.input_size, self.input_size)),
+            transforms.Resize((self.input_size, self.input_size)),  # input_sizeを使用
             transforms.ToTensor(),
             transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
         ])
