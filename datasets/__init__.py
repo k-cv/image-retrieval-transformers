@@ -31,13 +31,12 @@ def get_dataset(args):
             input_size=args.input_size,
             split="train"
         )
-        # query   = CADImageDataset(
-        #     label_file='/home/kfujii/image-retrieval-transformers/data/CAD/label.txt',
-        #     data_dir='/home/kfujii/vitruvion/outputs/2024-09-05/12-54-06_all_images',
-        #     input_size=args.input_size,
-        #     split="test"
-        # )
-        query = None
+        query   = CADImageDataset(
+            label_file='/home/kfujii/image-retrieval-transformers/data/CAD/label.txt',
+            data_dir='/home/kfujii/vitruvion/outputs/2024-09-05/12-54-06_all_images',
+            input_size=args.input_size,
+            split="test"
+        )
         gallery = None  # CADデータセットではギャラリーデータが不要な場合
 
     return train, query, gallery

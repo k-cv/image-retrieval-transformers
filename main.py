@@ -97,7 +97,7 @@ def main(args):
     # get training/query/gallery dataset
     dataset_train, dataset_query, dataset_gallery = get_dataset(args)
     logging.info(f"Number of training examples: {len(dataset_train)}")
-    # logging.info(f"Number of query examples: {len(dataset_query)}")
+    logging.info(f"Number of query examples: {len(dataset_query)}")
 
     sampler_train = RandomSampler(dataset_train)
     if args.m: sampler_train = MPerClassSampler(dataset_train.labels, m=args.m, batch_size=args.batch_size)
@@ -111,14 +111,14 @@ def main(args):
         drop_last=False,
     )
 
-    # data_loader_query = torch.utils.data.DataLoader(
-    #     dataset_query,
-    #     batch_size=args.batch_size,
-    #     num_workers=args.num_workers,
-    #     pin_memory=args.pin_mem,
-    #     drop_last=False,
-    #     shuffle=False
-    # )
+    data_loader_query = torch.utils.data.DataLoader(
+        dataset_query,
+        batch_size=args.batch_size,
+        num_workers=args.num_workers,
+        pin_memory=args.pin_mem,
+        drop_last=False,
+        shuffle=False
+    )
 
     data_loader_gallery = None
     if dataset_gallery is not None:
@@ -198,13 +198,13 @@ def main(args):
 
     logging.info("Start evaluation job")
 
-    # evaluate(
-    #     data_loader_query,
-    #     data_loader_gallery,
-    #     model,
-    #     device,
-    #     rank=sorted(args.rank)
-    # )
+    evaluate(
+        data_loader_query,
+        data_loader_gallery,
+        model,
+        device,
+        rank=sorted(args.rank)
+    )
 
     total_time = time.time() - start_time
     total_time_str = str(datetime.timedelta(seconds=int(total_time)))

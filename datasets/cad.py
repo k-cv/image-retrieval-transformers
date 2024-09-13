@@ -20,36 +20,53 @@ class CADImageDataset(BaseDataset):
         self.ignore_label = ignore_label
         self.input_size = input_size  # input_size を初期化
         self.index_file = index_file
+        self.split = split  # split を保持
         super(CADImageDataset, self).__init__(data_dir=data_dir, input_size=input_size, split=split)
         
         # index.pth ファイルの読み込み
         if self.index_file:
             self.encoder_index = torch.load(self.index_file)
         
-        self.labels = self.load_labels(label_file)  # ラベルをロード
-
-        # ラベルが有効（ignore_label でないもの）のデータのみを保持
-        self.valid_indices = [i for i, label in enumerate(self.labels) if label != self.ignore_label]
-        self.paths = [self.get_image_path(i) for i in self.valid_indices]
-        self.labels = [self.labels[i] for i in self.valid_indices]
+        self.labels, self.paths = self.load_labels_and_paths(label_file)  # ラベルとパスをロード
 
         assert len(self.paths) == len(self.labels), "有効な特徴量とラベルの数が一致しません"
 
-    def load_labels(self, label_file):
+    def load_labels_and_paths(self, label_file):
         # ラベルファイルをロードし、各サンプルにクラスラベルを付与する
         labels = {}
+        paths = []
         with open(label_file, 'r') as f:
             for class_label, line in enumerate(f):
                 class_samples = list(map(int, line.strip().split()))  # スペース区切りのラベルをリストに
                 for sample in class_samples:
                     labels[sample] = class_label  # 各 feature_index に対してクラスラベルを付与
-        # ラベルリストを特徴量の順序に従って作成
-        max_samples = max(labels.keys()) + 1  # インデックスが0から始まるため、+1
+
+        # train_test_splitに基づき、データを分割
+        max_samples = max(labels.keys()) + 1
         labels_with_ignore = [self.ignore_label] * max_samples
+        paths_with_ignore = [''] * max_samples
         for i in range(max_samples):
             if i in labels:
                 labels_with_ignore[i] = labels[i]  # feature_indexに基づいてクラスラベルを付与
-        return labels_with_ignore
+                paths_with_ignore[i] = self.get_image_path(i)
+
+        # トレーニングまたはテストセット用にフィルタリング
+        if self.split == "train":
+            split_filter = 1  # トレーニングセットは1
+        else:
+            split_filter = 0  # テストセットは0
+
+        # `label.txt`の情報を基にsplit_filterを使用してフィルタリング
+        valid_labels = []
+        valid_paths = []
+        with open('data/CAD/train_test_split.txt', 'r') as split_file:
+            for line in split_file:
+                image_id, is_training_image = map(int, line.strip().split())
+                if is_training_image == split_filter:
+                    valid_labels.append(labels_with_ignore[image_id])
+                    valid_paths.append(paths_with_ignore[image_id])
+
+        return valid_labels, valid_paths
 
     def get_image_path(self, idx):
         # index.pthを使って、idxを変換してから画像のパスを生成する
