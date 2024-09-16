@@ -21,8 +21,8 @@ from pytorch_metric_learning.distances import CosineSimilarity
 from pytorch_metric_learning.losses import ContrastiveLoss
 
 from xbm import XBM
-from datasets.cad_from_features import CADFeatureDataset  # CADFeatureDatasetをインポート
-from engine_cad import train, evaluate  # engine_cad.py に合わせて変更
+from datasets.cadc import CADFeatureDataset  # CADFeatureDatasetをインポート
+from enginec import train, evaluate  # engine_cad.py に合わせて変更
 from regularizer import DifferentialEntropyRegularization
 
 
