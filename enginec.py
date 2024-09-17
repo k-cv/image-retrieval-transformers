@@ -12,8 +12,17 @@ from metric import recall
 from xbm import XBM, momentum_update_key_encoder
 
 
+def pad_sequence(features, target_length=256):
+    """ シーケンス長をゼロパディングして256に調整する関数 """
+    batch_size, seq_len, feature_dim = features.shape
+    if seq_len < target_length:
+        padding = torch.zeros((batch_size, target_length - seq_len, feature_dim)).to(features.device)
+        features = torch.cat([features, padding], dim=1)
+    return features
+
 def train(
         encoder: torch.nn.Module,
+        projector: torch.nn.Module,  # 特徴次元数を変換するプロジェクター
         encoder_k: Union[torch.nn.Module, None],
         criterion: torch.nn.Module,
         xbm: XBM,
@@ -32,7 +41,7 @@ def train(
 
     while iteration < args.max_iter:
         try:
-            # 画像の代わりに特徴を取得 (形状: [バッチサイズ, シーケンス長, 次元数])
+            # 特徴を取得 (形状: [バッチサイズ, 130, 256])
             features, targets = _train_loader.next()
         except StopIteration:
             _train_loader = iter(data_loader)
@@ -42,11 +51,17 @@ def train(
         features = features.to(device)
         targets = targets.to(device)
 
+        # シーケンス長を256に合わせる
+        features = pad_sequence(features)
+
+        # 特徴次元数を256から384に変換
+        features = projector(features)  # [バッチサイズ, 256, 384] に変換
+
         # 特徴をSiamese Networkで処理
         features = encoder(features)
         if isinstance(features, tuple):
             features = features[0]
-        
+
         # 特徴をシーケンス方向 (dim=2) で正規化
         features = F.normalize(features, dim=2)
 
@@ -58,15 +73,19 @@ def train(
                 features_k = F.normalize(features_k, dim=2)
         else:
             features_k = features
-        
+
+        # シーケンス方向 (dim=1) で平均を取り、2次元に変換
+        features_k_avg = features_k.mean(dim=1)  # [バッチサイズ, 384]
+        features_avg = features.mean(dim=1)      # [バッチサイズ, 384]
+
         # XBMを用いてキューに特徴を登録
-        xbm.enqueue_dequeue(features_k.detach(), targets.detach())
+        xbm.enqueue_dequeue(features_k_avg.detach(), targets.detach())
 
         # Contrastive Loss 計算 (ペアワイズの距離学習)
-        loss_contr = criterion(features, targets)
-        loss_koleo = regularization(features)
+        loss_contr = criterion(features_avg, targets)
+        loss_koleo = regularization(features_avg)
         xbm_features, xbm_targets = xbm.get()
-        loss_contr += criterion(features, targets, ref_emb=xbm_features, ref_labels=xbm_targets)
+        loss_contr += criterion(features_avg, targets, ref_emb=xbm_features, ref_labels=xbm_targets)
 
         # 総損失の計算
         loss = loss_contr + loss_koleo * args.lambda_reg
@@ -108,6 +127,8 @@ def train(
     torch.save(encoder.state_dict(), save_path)
 
 
+
+"""
 @torch.no_grad()
 def evaluate(data_loader_query, data_loader_gallery, encoder, device, log_writer=None, rank=[1, 5, 10]):
     # 評価モードに切り替え
@@ -158,3 +179,4 @@ def evaluate(data_loader_query, data_loader_gallery, encoder, device, log_writer
             log_writer.add_scalar(f"metric/Recall", _recall, k)
 
     return recall_list
+"""

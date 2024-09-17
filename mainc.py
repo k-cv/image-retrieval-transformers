@@ -15,15 +15,27 @@ from timm.optim import create_optimizer
 from timm.utils import NativeScaler
 from torch.utils.tensorboard import SummaryWriter
 
+import torch.nn.functional as F
+
 from torch.utils.data import RandomSampler
 from pytorch_metric_learning.samplers import MPerClassSampler
 from pytorch_metric_learning.distances import CosineSimilarity
 from pytorch_metric_learning.losses import ContrastiveLoss
 
 from xbm import XBM
-from datasets.cad import CADFeatureDataset  # CADFeatureDatasetをインポート
-from enginec import train, evaluate  # enginec.py に合わせて変更
+from datasets.cadc import CADFeatureDataset  # CADFeatureDatasetをインポート
+from datasets import get_dataset
+from enginec import train#, evaluate  # enginec.py に合わせて変更
 from regularizer import DifferentialEntropyRegularization
+
+
+class FeatureProjector(torch.nn.Module):
+    def __init__(self, input_dim=256, output_dim=384):
+        super(FeatureProjector, self).__init__()
+        self.linear = torch.nn.Linear(input_dim, output_dim)
+
+    def forward(self, x):
+        return self.linear(x)
 
 
 def get_args_parser():
@@ -49,7 +61,7 @@ def get_args_parser():
 
     # Dataset parameters
     parser.add_argument('--dataset', default='cad_dataset', type=str, help='Dataset name')
-    parser.add_argument('--data-dir', 
+    parser.add_argument('--data-path', 
         default='/path/to/features',  
         type=str, 
         help='Directory containing feature .npy files')
@@ -82,36 +94,7 @@ def get_args_parser():
     return parser
 
 
-def get_dataset(args):
-    """
-    CADFeatureDataset を使用してトレーニング、クエリ、ギャラリーのデータセットを取得します。
-    """
-    # トレーニングデータセット
-    dataset_train = CADFeatureDataset(
-        data_dir=args.data_dir,
-        label_file=args.label_file,
-        split='train'
-    )
-
-    # クエリデータセット
-    dataset_query = CADFeatureDataset(
-        data_dir=args.data_dir,
-        label_file=args.label_file,
-        split='query'
-    )
-
-    # ギャラリーデータセット
-    dataset_gallery = CADFeatureDataset(
-        data_dir=args.data_dir,
-        label_file=args.label_file,
-        split='gallery'
-    )
-
-    return dataset_train, dataset_query, dataset_gallery
-
-
 def main(args):
-
     logging.info("=" * 20 + " training arguments " + "=" * 20)
     for k, v in vars(args).items():
         logging.info(f"{k}: {v}")
@@ -182,18 +165,13 @@ def main(args):
         def __init__(self, original_model, input_dim=256):
             super(CustomViTModel, self).__init__()
             self.original_model = original_model
-            # ポジションエンベディングをリサイズして、256次元の特徴量に対応させる
-            self.pos_embed = torch.nn.Parameter(
-                original_model.pos_embed[:, :input_dim, :].clone()
-            )
-            self.pos_drop = original_model.pos_drop
+            # ポジションエンベディングは使用しない
             self.blocks = original_model.blocks
             self.norm = original_model.norm
 
         def forward(self, x):
-            # patch_embed をスキップし、特徴量を直接Transformerに入力
-            x = x + self.pos_embed[:, :x.size(1), :]  # ポジションエンベディングを特徴量に加算
-            x = self.pos_drop(x)
+            # 直接Transformerに入力
+            x = self.original_model.pos_drop(x)  # Dropoutだけ適用
             for blk in self.blocks:
                 x = blk(x)
             x = self.norm(x)
@@ -203,23 +181,24 @@ def main(args):
     # モデルを作成（次元を変換）
     input_dim = 256  # 入力特徴量の次元
     target_dim = 384  # ViTモデルが期待する次元
-    model = CustomViTModel(original_model, input_dim, target_dim)
+    model = CustomViTModel(original_model, input_dim)
     model.to(device)
 
+    # 特徴次元数のプロジェクション層
+    projector = FeatureProjector(input_dim=256, output_dim=384).to(device)
 
+    # モーメンタムエンコーダも同様に CustomViTModel を使用
     momentum_encoder = None
     if args.encoder_momentum is not None:
-        momentum_encoder = create_model(
+        original_momentum_model = create_model(
             args.model,
+            pretrained=False,  # 事前学習済みモデルは不要
             num_classes=0,
             drop_rate=args.drop,
             drop_path_rate=args.drop_path
         )
-        # for param_q, param_k in zip(model.parameters(), momentum_encoder.parameters()):
-        #     param_k.data.copy_(param_q.data)  # Initialize
-        #     param_k.requires_grad = False  # Not update by gradient
-        # momentum_encoder.to(device)
-    model.to(device)
+        momentum_encoder = CustomViTModel(original_momentum_model, input_dim).to(device)
+
     n_parameters = sum(p.numel() for p in model.parameters() if p.requires_grad)
     logging.info(f'Number of params: {round(n_parameters / 1_000_000, 2):.2f} M')
 
@@ -250,7 +229,8 @@ def main(args):
     # モデルのトレーニング
     train(
         model,
-        momentum_encoder,
+        projector,  # projectorを追加
+        momentum_encoder,  # モーメンタムエンコーダにもパッチエンべディングをスキップ
         criterion,
         xbm,
         regularization,

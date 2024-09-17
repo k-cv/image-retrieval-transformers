@@ -2,6 +2,7 @@ from .cub200 import Cub200Dataset
 from .sop import SOPDataset
 from .inshop import InShopDataset
 from .cad import CADImageDataset
+from .cadc import CADFeatureDataset
 
 
 def get_dataset(args):
@@ -38,5 +39,19 @@ def get_dataset(args):
             split="test"
         )
         gallery = None  # CADデータセットではギャラリーデータが不要な場合
+
+    if args.dataset == 'cadc':
+        train = CADFeatureDataset(
+            label_file='/home/kfujii/image-retrieval-transformers/data/CAD/label.txt',
+            data_dir ='/home/kfujii/vitruvion/encoder_features2.pth',
+            
+            split="train"
+        )
+        query = CADFeatureDataset(
+            label_file='/home/kfujii/image-retrieval-transformers/data/CAD/label.txt',
+            data_dir ='/home/kfujii/vitruvion/encoder_features2.pth',
+            
+            split="test"
+        )
 
     return train, query, gallery
