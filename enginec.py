@@ -11,15 +11,6 @@ from tqdm import tqdm
 from metric import recall
 from xbm import XBM, momentum_update_key_encoder
 
-
-def pad_sequence(features, target_length=256):
-    """ シーケンス長をゼロパディングして256に調整する関数 """
-    batch_size, seq_len, feature_dim = features.shape
-    if seq_len < target_length:
-        padding = torch.zeros((batch_size, target_length - seq_len, feature_dim)).to(features.device)
-        features = torch.cat([features, padding], dim=1)
-    return features
-
 def train(
         encoder: torch.nn.Module,
         projector: torch.nn.Module,  # 特徴次元数を変換するプロジェクター
@@ -51,41 +42,53 @@ def train(
         features = features.to(device)
         targets = targets.to(device)
 
-        # シーケンス長を256に合わせる
-        features = pad_sequence(features)
-
         # 特徴次元数を256から384に変換
         features = projector(features)  # [バッチサイズ, 256, 384] に変換
+        f_tmp = features.clone()
 
         # 特徴をSiamese Networkで処理
         features = encoder(features)
         if isinstance(features, tuple):
             features = features[0]
 
-        # 特徴をシーケンス方向 (dim=2) で正規化
-        features = F.normalize(features, dim=2)
+        # # 特徴をシーケンス方向 (dim=2) で正規化
+        # features = F.normalize(features, dim=2)
+        # クラストークンの特徴を取得
+        # クラストークンの特徴を取得
+        features = features[:, 0, :]  # [バッチサイズ, 384]
+        features = F.normalize(features, dim=1)
 
+        # if encoder_k is not None:
+        #     with torch.no_grad(), torch.cuda.amp.autocast():
+        #         features_k = encoder_k(features)
+        #         if isinstance(features_k, tuple):
+        #             features_k = features_k[0]
+        #         features_k = F.normalize(features_k, dim=2)
+        # else:
+        #     features_k = features
         if encoder_k is not None:
             with torch.no_grad(), torch.cuda.amp.autocast():
-                features_k = encoder_k(features)
+                features_k = encoder_k(f_tmp)
                 if isinstance(features_k, tuple):
                     features_k = features_k[0]
-                features_k = F.normalize(features_k, dim=2)
+                features_k = features_k[:, 0, :]
+                features_k = F.normalize(features_k, dim=1)
         else:
             features_k = features
 
+
         # シーケンス方向 (dim=1) で平均を取り、2次元に変換
-        features_k_avg = features_k.mean(dim=1)  # [バッチサイズ, 384]
-        features_avg = features.mean(dim=1)      # [バッチサイズ, 384]
+        features_k_avg = features_k  # [バッチサイズ, 384]
+        features_avg = features      # [バッチサイズ, 384]
 
         # XBMを用いてキューに特徴を登録
         xbm.enqueue_dequeue(features_k_avg.detach(), targets.detach())
 
-        # Contrastive Loss 計算 (ペアワイズの距離学習)
-        loss_contr = criterion(features_avg, targets)
-        loss_koleo = regularization(features_avg)
+        # Contrastive Loss 計算
+        loss_contr = criterion(features, targets)
+        loss_koleo = regularization(features)
         xbm_features, xbm_targets = xbm.get()
-        loss_contr += criterion(features_avg, targets, ref_emb=xbm_features, ref_labels=xbm_targets)
+        loss_contr += criterion(features, targets, ref_emb=xbm_features, ref_labels=xbm_targets)
 
         # 総損失の計算
         loss = loss_contr + loss_koleo * args.lambda_reg
@@ -123,15 +126,26 @@ def train(
                 log_writer.add_scalar("loss/total", loss_value, iteration)
 
     # モデルの保存
-    save_path = os.path.join(args.output_dir, "encoder.pth")
-    torch.save(encoder.state_dict(), save_path)
+    save_path = os.path.join(args.output_dir, "model_checkpoint.pth")
+    torch.save({
+        'encoder_state_dict': encoder.state_dict(),
+        'projector_state_dict': projector.state_dict(),
+        'optimizer_state_dict': optimizer.state_dict(),
+        # エポック数や他の情報を保存する場合
+        # 'epoch': current_epoch,
+    }, save_path)
 
 
 
-"""
 @torch.no_grad()
-def evaluate(data_loader_query, data_loader_gallery, encoder, device, log_writer=None, rank=[1, 5, 10]):
-    # 評価モードに切り替え
+def evaluate(
+        data_loader_query,
+        data_loader_gallery,
+        encoder,
+        device,
+        projector,          # projector を追加
+        log_writer=None,
+        rank=[1, 5, 10]):
     encoder.eval()
     recall_list = []
 
@@ -141,10 +155,13 @@ def evaluate(data_loader_query, data_loader_gallery, encoder, device, log_writer
     # クエリデータの処理
     for (features, targets) in tqdm(data_loader_query, total=len(data_loader_query), desc="query"):
         features = features.to(device)
+        features = projector(features)  # 特徴次元数を変換
         output = encoder(features)
         if isinstance(output, tuple):
             output = output[0]
-        output = F.normalize(output, dim=2)  # シーケンス方向で正規化
+        # クラストークンの特徴を取得
+        output = output[:, 0, :]  # [バッチサイズ, 384]
+        output = F.normalize(output, dim=1)
         query_features.append(output.detach().cpu())
         query_labels += targets.tolist()
 
@@ -159,13 +176,14 @@ def evaluate(data_loader_query, data_loader_gallery, encoder, device, log_writer
         gallery_labels = []
         for (features, targets) in tqdm(data_loader_gallery, total=len(data_loader_gallery), desc="gallery"):
             features = features.to(device)
+            features = projector(features)  # 特徴次元数を変換
 
-            # 出力の計算
             with torch.cuda.amp.autocast():
                 output = encoder(features)
                 if isinstance(output, tuple):
                     output = output[0]
-                output = F.normalize(output, dim=2)
+                output = output[:, 0, :]  # クラストークンの特徴を取得
+                output = F.normalize(output, dim=1)
                 gallery_features.append(output.detach().cpu())
                 gallery_labels += targets.tolist()
 
@@ -179,4 +197,3 @@ def evaluate(data_loader_query, data_loader_gallery, encoder, device, log_writer
             log_writer.add_scalar(f"metric/Recall", _recall, k)
 
     return recall_list
-"""

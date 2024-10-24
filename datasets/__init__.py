@@ -3,6 +3,9 @@ from .sop import SOPDataset
 from .inshop import InShopDataset
 from .cad import CADImageDataset
 from .cadc import CADFeatureDataset
+from .misumi import MisumiImageDataset
+from .misumic import MisumiFeatureDataset
+
 
 
 def get_dataset(args):
@@ -27,13 +30,13 @@ def get_dataset(args):
     # CADデータセットの追加
     if args.dataset == 'cad':
         train   = CADImageDataset(
-            label_file='/home/kfujii/image-retrieval-transformers/data/CAD/label.txt',
+            label_file='/home/kfujii/image-retrieval-transformers/data/CAD/label2.txt',
             data_dir='/home/kfujii/vitruvion/outputs/2024-09-05/12-54-06_all_images',
             input_size=args.input_size,
             split="train"
         )
         query   = CADImageDataset(
-            label_file='/home/kfujii/image-retrieval-transformers/data/CAD/label.txt',
+            label_file='/home/kfujii/image-retrieval-transformers/data/CAD/label2.txt',
             data_dir='/home/kfujii/vitruvion/outputs/2024-09-05/12-54-06_all_images',
             input_size=args.input_size,
             split="test"
@@ -42,16 +45,39 @@ def get_dataset(args):
 
     if args.dataset == 'cadc':
         train = CADFeatureDataset(
-            label_file='/home/kfujii/image-retrieval-transformers/data/CAD/label.txt',
+            label_file='/home/kfujii/image-retrieval-transformers/data/CAD/label2.txt',
             data_dir ='/home/kfujii/vitruvion/encoder_features2.pth',
             
             split="train"
         )
         query = CADFeatureDataset(
-            label_file='/home/kfujii/image-retrieval-transformers/data/CAD/label.txt',
+            label_file='/home/kfujii/image-retrieval-transformers/data/CAD/label2.txt',
             data_dir ='/home/kfujii/vitruvion/encoder_features2.pth',
             
             split="test"
+        )
+    if args.dataset == 'misumi':
+        train = MisumiImageDataset(
+            data_dir =args.data_path,
+            split="train",
+            test_ratio=args.test_ratio,
+        )
+        query = MisumiImageDataset(
+            data_dir=args.data_path,
+            split="test",
+            test_ratio=args.test_ratio,
+        )
+    if args.dataset == 'misumic':
+        print('using misumic version')
+        train = MisumiFeatureDataset(
+            data_dir =args.data_path,
+            split="train",
+            test_ratio=args.test_ratio,
+        )
+        query = MisumiFeatureDataset(
+            data_dir = args.data_path,
+            split="test",
+            test_ratio=args.test_ratio,
         )
 
     return train, query, gallery

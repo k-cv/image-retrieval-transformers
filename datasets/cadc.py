@@ -57,7 +57,16 @@ class CADFeatureDataset(Dataset):
         # 特徴量とラベルを取得する
         feature = self.features[idx]  # [シーケンス長, 256]
         label = self.labels[idx]
-        return torch.tensor(feature, dtype=torch.float32), torch.tensor(label, dtype=torch.long)
+
+        # シーケンス長を256に調整
+        if feature.shape[0] < 256:
+            padding = torch.zeros(256 - feature.shape[0], feature.shape[1])
+            feature = torch.cat([feature, padding], dim=0)
+        elif feature.shape[0] > 256:
+            feature = feature[:256, :]
+
+        return feature.float(), torch.tensor(label, dtype=torch.long)
+
 
     def __repr__(self):
         return f"{self.__class__.__name__}(split={self.split}, num_samples={len(self)})"
@@ -66,7 +75,7 @@ class CADFeatureDataset(Dataset):
 if __name__ == "__main__":
     # データセットの準備
     data_dir = '/home/kfujii/vitruvion/encoder_features2.pth'  # CADデータセットのパスを指定
-    label_file = '/home/kfujii/image-retrieval-transformers/data/CAD/label.txt'  # ラベルファイルのパスを指定
+    label_file = '/home/kfujii/image-retrieval-transformers/data/CAD/label2.txt'  # ラベルファイルのパスを指定
     dataset = CADFeatureDataset(data_dir=data_dir, label_file=label_file, split="train")
 
     # 一つのデータを取り出す

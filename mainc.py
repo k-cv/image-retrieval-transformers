@@ -25,7 +25,7 @@ from pytorch_metric_learning.losses import ContrastiveLoss
 from xbm import XBM
 from datasets.cadc import CADFeatureDataset  # CADFeatureDatasetをインポート
 from datasets import get_dataset
-from enginec import train#, evaluate  # enginec.py に合わせて変更
+from enginec import train, evaluate  # enginec.py に合わせて変更
 from regularizer import DifferentialEntropyRegularization
 
 
@@ -35,7 +35,9 @@ class FeatureProjector(torch.nn.Module):
         self.linear = torch.nn.Linear(input_dim, output_dim)
 
     def forward(self, x):
+        # xの形状: [バッチサイズ, シーケンス長, 入力次元]
         return self.linear(x)
+
 
 
 def get_args_parser():
@@ -44,7 +46,7 @@ def get_args_parser():
     # Model parameters
     parser.add_argument('--model', default='deit_small_distilled_patch16_224', type=str, help='Name of model to train')
     parser.add_argument('--input-size', default=130, type=int, help='Input sequence length (e.g., 130)')
-    parser.add_argument('--embed-dim', default=256, type=int, help='Embedding dimension (e.g., 256)')
+    parser.add_argument('--embed-dim', default=384, type=int, help='Embedding dimension (e.g., 256)')
     parser.add_argument('--drop', type=float, default=0.0, help='Dropout rate (default: 0.)')
     parser.add_argument('--drop-path', type=float, default=0.1, metavar='PCT', help='Drop path rate (default: 0.1)')
 
@@ -90,6 +92,9 @@ def get_args_parser():
     parser.add_argument('--log-dir', default='./logs', help='Path where to save TensorBoard logs')
     parser.add_argument('--device', default='cuda:0', help='Device to use for training/testing')
     parser.add_argument('--seed', default=1127, type=int)
+
+    parser.add_argument('--test-ratio', default=0.2, type=float)
+
 
     return parser
 
@@ -162,26 +167,55 @@ def main(args):
     )
 
     class CustomViTModel(torch.nn.Module):
-        def __init__(self, original_model, input_dim=256):
+        def __init__(self, original_model, seq_len):
             super(CustomViTModel, self).__init__()
             self.original_model = original_model
-            # ポジションエンベディングは使用しない
+            self.cls_token = original_model.cls_token
+            self.pos_drop = original_model.pos_drop
             self.blocks = original_model.blocks
             self.norm = original_model.norm
 
+            # クラストークンと入力シーケンスに合わせて位置埋め込みを再初期化
+            num_tokens = 1  # cls_token の数
+            if hasattr(original_model, 'dist_token'):
+                num_tokens += 1  # distillation token の数
+                self.dist_token = original_model.dist_token
+
+            embed_dim = original_model.embed_dim
+            self.pos_embed = torch.nn.Parameter(
+                torch.zeros(1, seq_len + num_tokens, embed_dim)
+            )
+            torch.nn.init.trunc_normal_(self.pos_embed, std=.02)
+
         def forward(self, x):
-            # 直接Transformerに入力
-            x = self.original_model.pos_drop(x)  # Dropoutだけ適用
+            B = x.shape[0]
+
+            # クラストークンを拡張して入力に結合
+            cls_tokens = self.cls_token.expand(B, -1, -1)
+            if hasattr(self, 'dist_token'):
+                dist_token = self.dist_token.expand(B, -1, -1)
+                x = torch.cat((cls_tokens, dist_token, x), dim=1)
+            else:
+                x = torch.cat((cls_tokens, x), dim=1)
+
+            # 位置埋め込みを追加
+            x = x + self.pos_embed
+
+            # ドロップアウトとTransformerブロックを適用
+            x = self.pos_drop(x)
             for blk in self.blocks:
                 x = blk(x)
             x = self.norm(x)
+            # 必要かも？
+            # x = x.mean(dim=1)  # シーケンス方向に平均を取る（必要に応じて）
             return x
+
+
     
 
     # モデルを作成（次元を変換）
-    input_dim = 256  # 入力特徴量の次元
-    target_dim = 384  # ViTモデルが期待する次元
-    model = CustomViTModel(original_model, input_dim)
+    seq_len = 256
+    model = CustomViTModel(original_model, seq_len)
     model.to(device)
 
     # 特徴次元数のプロジェクション層
@@ -197,7 +231,7 @@ def main(args):
             drop_rate=args.drop,
             drop_path_rate=args.drop_path
         )
-        momentum_encoder = CustomViTModel(original_momentum_model, input_dim).to(device)
+        momentum_encoder = CustomViTModel(original_momentum_model, seq_len).to(device)
 
     n_parameters = sum(p.numel() for p in model.parameters() if p.requires_grad)
     logging.info(f'Number of params: {round(n_parameters / 1_000_000, 2):.2f} M')
@@ -245,13 +279,14 @@ def main(args):
 
     logging.info("Start evaluation job")
 
-    # モデルの評価
+    # 修正後の呼び出し
     evaluate(
         data_loader_query,
         data_loader_gallery,
         model,
         device,
-        log_writer,
+        projector,  # projectorを追加
+        log_writer=log_writer,
         rank=sorted(args.rank)
     )
 

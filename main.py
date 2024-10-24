@@ -47,7 +47,7 @@ def get_args_parser():
     parser.add_argument('--weight-decay', type=float, default=5e-4, help='weight decay (default: 5e-4)')
 
     # Dataset parameters
-    parser.add_argument('--dataset', default='cub200', choices=['cub200', 'sop', 'inshop', 'cad'], type=str, help='dataset path')
+    parser.add_argument('--dataset', default='cub200', choices=['cub200', 'sop', 'inshop', 'cad', 'misumi'], type=str, help='dataset path')
     parser.add_argument('--data-path', default='/data/CUB_200_2011', type=str, help='dataset path')
     parser.add_argument('--m', default=0, type=int, help="sample m images per class")
     parser.add_argument('--rank', default=[1, 2, 4, 8], nargs="+", type=int, help="compute recall@r")
@@ -72,6 +72,8 @@ def get_args_parser():
     parser.add_argument('--log-dir', default='./logs', help='path where to tensorboard log')
     parser.add_argument('--device', default='cuda:0', help='device to use for training / testing')
     parser.add_argument('--seed', default=0, type=int)
+
+    parser.add_argument('--test-ratio', default=0.2, type=float)
 
     return parser
 
