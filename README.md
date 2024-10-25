@@ -1,3 +1,17 @@
+# What's this?
+- このリポジトリは、Transformer距離学習モデルを、幾何認識モデルと統合するために作成されました。
+- 重要なファイルは以下の通り
+  - `main.py`: 起点のコード。画像入力に対応
+  - `mainc.py`: 起点のコード。中間特徴量入力に対応
+  - `engine.py`: 学習を動かすコード。
+  - `enginec.py`: 学習を動かすコード。中間特徴量に対応するため、ViTのPatch Embedding処理をスキップ。
+  - `dataset/cad.py`: SketchGraphsデータをフィードするためのデータセットファイル。ベースの自然画像Transformerを使用
+  - `dataset/cadc.py`: 中間特徴量をフィードするためのデータセットファイル。
+  - `dataset/misumi.py`: 新データセットに対応させ、ベースViTを使用
+  - `dataset/misumic.py`: 幾何特徴量を利用したデータセットファイル
+
+
+
 # Training Vision Transformers for Image Retrieval
  
 - (Unofficial) PyTorch implementation of [Training Vision Transformers for Image Retrieval](https://arxiv.org/abs/2102.05644)(El-Nouby, Alaaeldin, et al. 2021).
