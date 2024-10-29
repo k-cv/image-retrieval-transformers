@@ -8,6 +8,9 @@
 #   --lambda-reg 0.7
 
 
+
+
+
 # Zero-shot
 python mainc.py \
   --model deit_small_distilled_patch16_224 \
