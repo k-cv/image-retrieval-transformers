@@ -6,7 +6,7 @@ from PIL import Image
 class MisumiImageDataset(Dataset):
     def __init__(self, data_dir, input_size=224, split="train", test_ratio=0.2):
         """
-        :param data_dir: クラスごとにディレクトリが格納されているルートディレクトリ
+        :param data_dir: すべてのデータディレクトリを含むルートディレクトリ
         :param input_size: 画像の入力サイズ
         :param split: "train" or "test"
         :param test_ratio: テストデータの割合
@@ -27,17 +27,19 @@ class MisumiImageDataset(Dataset):
 
     def load_images_and_labels(self):
         data = []
-        class_dirs = os.listdir(self.data_dir)
-
-        for class_idx, class_dir in enumerate(class_dirs):
-            class_path = os.path.join(self.data_dir, class_dir)
-            if os.path.isdir(class_path):
-                image_files = os.listdir(class_path)
-                for image_file in image_files:
-                    image_path = os.path.join(class_path, image_file)
-                    # 画像ファイルのみを処理する
-                    if image_file.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp', '.gif')):
-                        data.append((image_path, class_idx))
+        for dir_name in os.listdir(self.data_dir):
+            dir_path = os.path.join(self.data_dir, dir_name)
+            if os.path.isdir(dir_path):
+                class_dirs = os.listdir(dir_path)
+                for class_idx, class_dir in enumerate(class_dirs):
+                    class_path = os.path.join(dir_path, class_dir)
+                    if os.path.isdir(class_path):
+                        image_files = os.listdir(class_path)
+                        for image_file in image_files:
+                            image_path = os.path.join(class_path, image_file)
+                            # 画像ファイルのみを処理する
+                            if image_file.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp', '.gif')):
+                                data.append((image_path, class_idx))
 
         return data
 
@@ -62,18 +64,18 @@ class MisumiImageDataset(Dataset):
         ])
 
         image = transform(image)
-        return image, label
+        return image, label, image_path
 
 if __name__ == "__main__":
     # データセットの準備
-    direc = '/home/kfujii/vitruvion/data/01_本番'  # 特徴量とラベルのペアが保存されているファイル
+    data_dir = '/home/kfujii/drawing/data'  # 01-1および01-2ディレクトリを含むルートディレクトリ
     
     # Trainデータセット
-    train_dataset = MisumiImageDataset(data_dir=direc, split="train")
+    train_dataset = MisumiImageDataset(data_dir=data_dir, split="train")
     print(f"Train dataset size: {len(train_dataset)}")
     
     # Testデータセット
-    test_dataset = MisumiImageDataset(data_dir=direc, split="test")
+    test_dataset = MisumiImageDataset(data_dir=data_dir, split="test")
     print(f"Test dataset size: {len(test_dataset)}")
 
     # 一つのデータを取り出す

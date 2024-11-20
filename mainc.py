@@ -188,6 +188,7 @@ def main(args):
             torch.nn.init.trunc_normal_(self.pos_embed, std=.02)
 
         def forward(self, x):
+            import pdb; pdb.set_trace()
             B = x.shape[0]
 
             # クラストークンを拡張して入力に結合
@@ -211,12 +212,14 @@ def main(args):
             return x
 
 
-    
+    from icecream import ic
 
     # モデルを作成（次元を変換）
     seq_len = 256
-    model = CustomViTModel(original_model, seq_len)
+    model = ic(CustomViTModel(original_model, seq_len))
     model.to(device)
+
+
 
     # 特徴次元数のプロジェクション層
     projector = FeatureProjector(input_dim=256, output_dim=384).to(device)

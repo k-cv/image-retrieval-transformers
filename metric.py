@@ -6,7 +6,9 @@ import torch
 from typing import List
 
 
-def recall(query_features, query_labels, rank: List[int], gallery_features=None, gallery_labels=None):
+from typing import List, Tuple
+
+def recall(query_features, query_labels, rank: List[int], gallery_features=None, gallery_labels=None) -> Tuple[List[float], torch.Tensor]:
     num_querys = len(query_labels)
     gallery_features = query_features if gallery_features is None else gallery_features
 
@@ -16,9 +18,14 @@ def recall(query_features, query_labels, rank: List[int], gallery_features=None,
         cosine_matrix.fill_diagonal_(-float('inf'))
         gallery_labels = query_labels
 
-    idx = cosine_matrix.topk(k=rank[-1], dim=-1, largest=True)[1]
+    # topkインデックスを取得
+    topk_indices = cosine_matrix.topk(k=rank[-1], dim=-1, largest=True)[1]
+
     recall_list = []
     for r in rank:
-        correct = (gallery_labels[idx[:, 0:r]] == query_labels.unsqueeze(dim=-1)).any(dim=-1).float()
+        correct = (gallery_labels[topk_indices[:, 0:r]] == query_labels.unsqueeze(dim=-1)).any(dim=-1).float()
         recall_list.append((torch.sum(correct) / num_querys).item())
-    return recall_list
+
+    # recall_list と topk_indices を返すように変更
+    return recall_list, topk_indices
+

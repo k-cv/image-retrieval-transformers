@@ -8,11 +8,8 @@
 #   --lambda-reg 0.7
 
 
-
-
-
 # Zero-shot
-python mainc.py \
+python new_main.py \
   --model deit_small_distilled_patch16_224 \
   --max-iter 0 \
   --dataset misumic \

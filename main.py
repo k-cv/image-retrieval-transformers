@@ -9,6 +9,7 @@ from pathlib import Path
 import numpy as np
 import torch
 import torch.backends.cudnn as cudnn
+from icecream import ic
 
 from timm.models import create_model
 from timm.optim import create_optimizer
@@ -142,7 +143,7 @@ def main(args):
         drop_path_rate=args.drop_path,
         drop_block_rate=None,
     )
-    print(model)
+    ic(model)
     momentum_encoder = None
     if args.encoder_momentum is not None:
         momentum_encoder = create_model(

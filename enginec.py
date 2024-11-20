@@ -58,14 +58,6 @@ def train(
         features = features[:, 0, :]  # [バッチサイズ, 384]
         features = F.normalize(features, dim=1)
 
-        # if encoder_k is not None:
-        #     with torch.no_grad(), torch.cuda.amp.autocast():
-        #         features_k = encoder_k(features)
-        #         if isinstance(features_k, tuple):
-        #             features_k = features_k[0]
-        #         features_k = F.normalize(features_k, dim=2)
-        # else:
-        #     features_k = features
         if encoder_k is not None:
             with torch.no_grad(), torch.cuda.amp.autocast():
                 features_k = encoder_k(f_tmp)
@@ -80,6 +72,8 @@ def train(
         # シーケンス方向 (dim=1) で平均を取り、2次元に変換
         features_k_avg = features_k  # [バッチサイズ, 384]
         features_avg = features      # [バッチサイズ, 384]
+        
+        # TODO: ここの特徴量を抽出してconcatするといいのではないか
 
         # XBMを用いてキューに特徴を登録
         xbm.enqueue_dequeue(features_k_avg.detach(), targets.detach())
