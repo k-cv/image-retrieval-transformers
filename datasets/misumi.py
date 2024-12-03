@@ -17,6 +17,10 @@ class MisumiImageDataset(Dataset):
         self.test_ratio = test_ratio
         self.data = self.load_images_and_labels()
 
+        # パスからインデックスへのマッピングを作成
+        self.path_to_index = {path: idx for idx, (path, _) in enumerate(self.data)}
+        self.index_to_path = {idx: path for path, idx in self.path_to_index.items()}
+
         # データをトレーニングとテストに分割
         self.train_data, self.test_data = self.split_data()
 
@@ -27,6 +31,7 @@ class MisumiImageDataset(Dataset):
 
     def load_images_and_labels(self):
         data = []
+        print("load_images_and_labels ...")
         for dir_name in os.listdir(self.data_dir):
             dir_path = os.path.join(self.data_dir, dir_name)
             if os.path.isdir(dir_path):
@@ -64,7 +69,8 @@ class MisumiImageDataset(Dataset):
         ])
 
         image = transform(image)
-        return image, label, image_path
+        unique_index = self.path_to_index[image_path]
+        return image, label, unique_index  # 一意のインデックスを返す
 
 if __name__ == "__main__":
     # データセットの準備
@@ -80,8 +86,9 @@ if __name__ == "__main__":
 
     # 一つのデータを取り出す
     idx = 80  # 取り出したいデータのインデックス
-    feature, label = train_dataset[idx]
+    feature, label, unique_index = train_dataset[idx]
 
     # 特徴量を表示
     print(f"Label: {label}")
     print(f"Feature shape: {feature.shape}")
+    print(f"Unique index: {unique_index}")
