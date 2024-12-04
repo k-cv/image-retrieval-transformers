@@ -210,8 +210,10 @@ def main(args):
         data_loader_gallery,
         model,
         device,
+        geo_features_path=args.geo_features_path,  # geo_features_path を渡す
         rank=sorted(args.rank)
     )
+
 
     total_time = time.time() - start_time
     total_time_str = str(datetime.timedelta(seconds=int(total_time)))
