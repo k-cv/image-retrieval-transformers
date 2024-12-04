@@ -95,61 +95,84 @@ def train_combined_model(
                 log_writer.add_scalar("loss/regularization", loss_koleo.item(), iteration)
                 log_writer.add_scalar("loss/total", loss.item(), iteration)
 
-
-
 @torch.no_grad()
-def evaluate(data_loader_query, data_loader_gallery, encoder, device, output_dir="output", log_writer=None, rank=[1, 5, 10]):
-    # 保存先ディレクトリの作成
-    os.makedirs(output_dir, exist_ok=True)
-
-    # switch to evaluation mode
-    encoder.eval()
-    recall_list = []
+def evaluate(data_loader_query, data_loader_gallery, encoder, device, geo_features_path, output_dir="output", log_writer=None, rank=[1, 5, 10]):
+    # 幾何特徴のロード
+    geo_features_data = torch.load(geo_features_path)
+    geo_features_tensor = geo_features_data['features']
 
     query_features = []
     query_labels = []
-    query_paths = []  # 追加: クエリ画像のパスを保持
+    query_paths = []
 
-    # クエリデータの特徴量を取得
-    for (images, targets, paths) in tqdm(data_loader_query, total=len(data_loader_query), desc="query"):
+    for images, targets, indices in data_loader_query:
         images = images.to(device)
-        output = encoder(images)
+        geo_features = geo_features_tensor[indices].to(device)
+
+        output = encoder(images, geo_features)
         if isinstance(output, tuple):
             output = output[0]
         output = F.normalize(output, dim=1)
         query_features.append(output.detach().cpu())
         query_labels += targets.tolist()
-        query_paths.extend(paths)  # 追加: 画像パスを保存
+        query_paths.extend([data_loader_query.dataset.index_to_path[idx.item()] for idx in indices])
 
     query_features = torch.cat(query_features, dim=0)
     query_labels = torch.LongTensor(query_labels)
+    
+    """debugs"""
+    # クエリとギャラリーのクラスラベルを出力
+    print(f"Query Labels: {query_labels.unique()}")
+    # print(f"Gallery Labels: {gallery_labels.unique()}")
+    from collections import Counter
+
+    # クラスラベルの分布を確認
+    query_label_counts = Counter(query_labels.tolist())
+    # gallery_label_counts = Counter(gallery_labels.tolist())
+    print(f"Query Label Counts: {query_label_counts}")
+    # print(f"Gallery Label Counts: {gallery_label_counts}")
+    import pdb;pdb.set_trace()
 
     # ギャラリーデータの特徴量を取得
     if data_loader_gallery is None:
         gallery_features = query_features
         gallery_labels = query_labels
         gallery_paths = query_paths
-        recall_list, top_k_indices = recall(query_features, query_labels, rank=rank)
     else:
         gallery_features = []
         gallery_labels = []
         gallery_paths = []
-        for (images, targets, paths) in tqdm(data_loader_gallery, total=len(data_loader_gallery), desc="gallery"):
+        for images, targets, indices in tqdm(data_loader_gallery, total=len(data_loader_gallery), desc="gallery"):
             images = images.to(device)
+            geo_features = geo_features_tensor[indices].to(device)
 
-            # compute output
-            with torch.cuda.amp.autocast():
-                output = encoder(images)
-                if isinstance(output, tuple):
-                    output = output[0]
-                output = F.normalize(output, dim=1)
-                gallery_features.append(output.detach().cpu())
-                gallery_labels += targets.tolist()
-                gallery_paths.extend(paths)  # 追加: 画像パスを保存
+            output = encoder(images, geo_features)
+            if isinstance(output, tuple):
+                output = output[0]
+            output = F.normalize(output, dim=1)
+            gallery_features.append(output.detach().cpu())
+            gallery_labels += targets.tolist()
+            gallery_paths.extend([data_loader_gallery.dataset.index_to_path[idx.item()] for idx in indices])
 
         gallery_features = torch.cat(gallery_features, dim=0)
         gallery_labels = torch.LongTensor(gallery_labels)
-        recall_list, top_k_indices = recall(query_features, query_labels, rank=rank, gallery_features=gallery_features, gallery_labels=gallery_labels)
+
+    # 修正: rank の調整
+    max_rank = min(len(gallery_features), len(query_features))
+    rank = [r for r in rank if r <= max_rank]
+    if not rank:
+        raise ValueError(f"No valid ranks! The rank values {args.rank} exceed the dataset size.")
+
+    # Recall 計算
+    recall_list, top_k_indices = recall(query_features, query_labels, rank=rank, gallery_features=gallery_features, gallery_labels=gallery_labels)
+
+    # ...
+    for (k, _recall) in zip(rank, recall_list):
+        logging.info(f"Recall@{k} : {_recall:.2%}")
+        if log_writer is not None:
+            log_writer.add_scalar(f"metric/Recall", _recall, k)
+
+    return recall_list
 
     # # クエリ画像と `top 4` 画像を保存
     # for i, query_idx in enumerate(top_k_indices):
@@ -167,7 +190,6 @@ def evaluate(data_loader_query, data_loader_gallery, encoder, device, output_dir
     #             top_image = Image.open(gallery_paths[idx]).convert("RGB")
     #             top_image = add_text_to_image(top_image, gallery_paths[idx])  # パス名を追加
     #             top_image.save(os.path.join(output_dir, f"query_{i}_top{j+1}_label_{top_k_labels[j]}.png"))
-
     for (k, _recall) in zip(rank, recall_list):
         logging.info(f"Recall@{k} : {_recall:.2%}")
         if log_writer is not None:
