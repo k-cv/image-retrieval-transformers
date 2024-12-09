@@ -1,19 +1,14 @@
 import logging
 import math
 import os
-import sys
-from typing import Union
-
 import torch
 import torch.nn.functional as F
+from typing import Union
 from tqdm import tqdm
 from torch import nn
-
 from metric import recall
 from xbm import XBM, momentum_update_key_encoder
-
 from PIL import Image, ImageDraw, ImageFont
-
 from combine import CombinedModel
 
 
@@ -34,54 +29,43 @@ def train_combined_model(
     optimizer.zero_grad()
     iteration = 0
     _train_loader = iter(data_loader)
-    
+
     # 幾何特徴のロード
-    geo_features_data = torch.load(geo_features_path)  # .pthファイルからロード
+    geo_features_data = torch.load(geo_features_path)
+    geo_path_to_features = {path: feature for path, feature in zip(geo_features_data['image_paths'], geo_features_data['features'])}
 
     while iteration < args.max_iter:
         try:
-            images, targets, indices = _train_loader.next()  # 画像, ラベル, インデックスを取得
+            images, targets, indices = _train_loader.next()
         except StopIteration:
             _train_loader = iter(data_loader)
             images, targets, indices = _train_loader.next()
-        
+        import pdb; pdb.set_trace()
         images = images.to(device)
         targets = targets.to(device)
-        # geo_features_data は辞書型 {'features': Tensor, 'labels': Tensor} を想定
-        geo_features_data = torch.load(geo_features_path)  # .pthファイルからロード
 
-        # indices のデータ型を確認し、必要なら変換
-        if isinstance(indices, list):
-            indices = [int(idx) for idx in indices]  # 文字列を整数に変換
-        indices = torch.tensor(indices, dtype=torch.long)  # 整数型テンソルに変換
+        # 相対パスに基づいて幾何特徴を取得
+        relative_paths = [data_loader.dataset.index_to_path[idx.item()] for idx in indices]
+        geo_features = torch.stack([geo_path_to_features[path] for path in relative_paths]).to(device)
 
-        # 'features' テンソルからインデックスを指定して取得
-        geo_features = geo_features_data['features'][indices]  # 対応するインデックスの特徴を取得
-
-        # 必要に応じてデバイスに移動
-        geo_features = geo_features.to(device)
-
-        
         # モデルのフォワードパス
         features = model(images, geo_features)
         features = nn.functional.normalize(features, dim=1)
-        
+
         # Contrastive Lossの計算
         loss_contr = criterion(features, targets)
-        
-        # XBMの処理
         xbm.enqueue_dequeue(features.detach(), targets.detach())
         xbm_features, xbm_targets = xbm.get()
         loss_contr += criterion(features, targets, ref_emb=xbm_features, ref_labels=xbm_targets)
-        
-        # 正則化項の計算
+
+        # 正則化
         loss_koleo = regularization(features)
         loss = loss_contr + loss_koleo * args.lambda_reg
-        
+
         # 勾配計算と更新
         optimizer.zero_grad()
         loss_scaler(loss, optimizer, clip_grad=max_norm, parameters=model.parameters())
-        
+
         iteration += 1
         if (iteration > 0 and iteration % args.logging_freq == 0) or iteration == args.max_iter:
             logging.info(
@@ -95,19 +79,17 @@ def train_combined_model(
                 log_writer.add_scalar("loss/regularization", loss_koleo.item(), iteration)
                 log_writer.add_scalar("loss/total", loss.item(), iteration)
 
+
 @torch.no_grad()
 def evaluate(data_loader_query, data_loader_gallery, encoder, device, geo_features_path, output_dir="output", log_writer=None, rank=[1, 5, 10]):
-    # 幾何特徴のロード
     geo_features_data = torch.load(geo_features_path)
-    geo_features_tensor = geo_features_data['features']
+    geo_path_to_features = {path: feature for path, feature in zip(geo_features_data['image_paths'], geo_features_data['features'])}
 
-    query_features = []
-    query_labels = []
-    query_paths = []
-
+    query_features, query_labels, query_paths = [], [], []
     for images, targets, indices in data_loader_query:
         images = images.to(device)
-        geo_features = geo_features_tensor[indices].to(device)
+        relative_paths = [data_loader_query.dataset.index_to_path[idx.item()] for idx in indices]
+        geo_features = torch.stack([geo_path_to_features[path] for path in relative_paths]).to(device)
 
         output = encoder(images, geo_features)
         if isinstance(output, tuple):
@@ -115,23 +97,10 @@ def evaluate(data_loader_query, data_loader_gallery, encoder, device, geo_featur
         output = F.normalize(output, dim=1)
         query_features.append(output.detach().cpu())
         query_labels += targets.tolist()
-        query_paths.extend([data_loader_query.dataset.index_to_path[idx.item()] for idx in indices])
+        query_paths.extend(relative_paths)
 
     query_features = torch.cat(query_features, dim=0)
     query_labels = torch.LongTensor(query_labels)
-    
-    """debugs"""
-    # クエリとギャラリーのクラスラベルを出力
-    print(f"Query Labels: {query_labels.unique()}")
-    # print(f"Gallery Labels: {gallery_labels.unique()}")
-    from collections import Counter
-
-    # クラスラベルの分布を確認
-    query_label_counts = Counter(query_labels.tolist())
-    # gallery_label_counts = Counter(gallery_labels.tolist())
-    print(f"Query Label Counts: {query_label_counts}")
-    # print(f"Gallery Label Counts: {gallery_label_counts}")
-    import pdb;pdb.set_trace()
 
     # ギャラリーデータの特徴量を取得
     if data_loader_gallery is None:

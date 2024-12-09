@@ -113,6 +113,8 @@ def main(args):
         pin_memory=args.pin_mem,
         drop_last=False,
     )
+    logging.info(f"Training dataset length: {len(dataset_train)}")
+    logging.info(f"First item in dataset_train: {dataset_train[0] if len(dataset_train) > 0 else 'Dataset is empty'}")
 
     data_loader_query = torch.utils.data.DataLoader(
         dataset_query,
@@ -143,7 +145,7 @@ def main(args):
         drop_path_rate=args.drop_path,
         drop_block_rate=None,
     )
-    ic(model)
+    # ic(model)
     momentum_encoder = None
     if args.encoder_momentum is not None:
         momentum_encoder = create_model(

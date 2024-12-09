@@ -35,10 +35,23 @@ def train(
     while iteration < args.max_iter:
 
         try:
-            images, targets = _train_loader.next()
+            batch = _train_loader.next()
+            if len(batch) == 2:
+                images, targets = batch
+            elif len(batch) == 3:
+                images, targets, _ = batch  # 追加情報を無視
+            else:
+                raise ValueError(f"Unexpected batch format: {batch}")
         except StopIteration:
             _train_loader = iter(data_loader)
-            images, targets = _train_loader.next()
+            batch = _train_loader.next()
+            if len(batch) == 2:
+                images, targets = batch
+            elif len(batch) == 3:
+                images, targets, _ = batch  # 追加情報を無視
+            else:
+                raise ValueError(f"Unexpected batch format: {batch}")
+
 
         images = images.to(device)
         targets = targets.to(device)

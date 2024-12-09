@@ -83,12 +83,12 @@ def get_args_parser():
 
 def main(args):
 
-    logging.info("=" * 20 + " training arguments " + "=" * 20)
+    logging.info("=" * 20 + " Training Arguments " + "=" * 20)
     for k, v in vars(args).items():
         logging.info(f"{k}: {v}")
     logging.info("=" * 60)
 
-    # fix random seed
+    # Fix random seed
     torch.manual_seed(args.seed)
     torch.cuda.manual_seed(args.seed)
     torch.cuda.manual_seed_all(args.seed)
@@ -99,13 +99,27 @@ def main(args):
 
     device = torch.device(args.device)
 
-    # get training/query/gallery dataset
+    # Get datasets
     dataset_train, dataset_query, dataset_gallery = get_dataset(args)
     logging.info(f"Number of training examples: {len(dataset_train)}")
     logging.info(f"Number of query examples: {len(dataset_query)}")
 
+    # Validate paths and labels
+    geo_features_data = torch.load(args.geo_features_path)
+    geo_paths = set(geo_features_data['image_paths'])
+
+    dataset_paths = set([os.path.relpath(path, start=args.data_path) for _, _, path in dataset_train])
+    missing_in_geo = dataset_paths - geo_paths
+    missing_in_dataset = geo_paths - dataset_paths
+
+    if missing_in_geo:
+        logging.warning(f"Paths missing in geo_features_data: {missing_in_geo}")
+    if missing_in_dataset:
+        logging.warning(f"Paths missing in dataset_train: {missing_in_dataset}")
+
     sampler_train = RandomSampler(dataset_train)
-    if args.m: sampler_train = MPerClassSampler(dataset_train.labels, m=args.m, batch_size=args.batch_size)
+    if args.m:
+        sampler_train = MPerClassSampler(dataset_train.labels, m=args.m, batch_size=args.batch_size)
 
     data_loader_train = torch.utils.data.DataLoader(
         dataset_train,
@@ -122,9 +136,9 @@ def main(args):
         num_workers=args.num_workers,
         pin_memory=args.pin_mem,
         drop_last=False,
-        shuffle=False
+        shuffle=False,
     )
-
+    
     data_loader_gallery = None
     if dataset_gallery is not None:
         data_loader_gallery = torch.utils.data.DataLoader(
@@ -167,29 +181,22 @@ def main(args):
     # get optimizer
     optimizer = create_optimizer(args, model)
 
-    # get loss & regularizer
-    criterion = ContrastiveLoss(
-        pos_margin=1.0,
-        neg_margin=args.margin,
-        distance=CosineSimilarity(),
-    )
+    # Loss and Regularization
+    criterion = ContrastiveLoss(pos_margin=1.0, neg_margin=args.margin, distance=CosineSimilarity())
     regularization = DifferentialEntropyRegularization()
     xbm = XBM(
         memory_size=int(len(dataset_train) * args.memory_ratio),
         embedding_dim=model.embed_dim,
-        device=device
+        device=device,
     )
     loss_scaler = NativeScaler()
-
     log_writer = None
     if args.log_dir is not None:
         os.makedirs(args.log_dir, exist_ok=True)
         log_writer = SummaryWriter(log_dir=args.log_dir)
-
     start_time = time.time()
     train_combined_model(
         model,
-        # momentum_encoder,
         criterion,
         xbm,
         regularization,
@@ -200,20 +207,18 @@ def main(args):
         args.clip_grad,
         log_writer,
         args=args,
-        geo_features_path=args.geo_features_path
+        geo_features_path=args.geo_features_path,
     )
 
     logging.info("Start evaluation job")
-
     evaluate(
         data_loader_query,
         data_loader_gallery,
         model,
         device,
-        geo_features_path=args.geo_features_path,  # geo_features_path を渡す
-        rank=sorted(args.rank)
+        geo_features_path=args.geo_features_path,
+        rank=sorted(args.rank),
     )
-
 
     total_time = time.time() - start_time
     total_time_str = str(datetime.timedelta(seconds=int(total_time)))
@@ -221,10 +226,9 @@ def main(args):
 
 
 if __name__ == "__main__":
-
     logging.basicConfig(
         level=logging.INFO,
-        format='%(asctime)s - %(message)s',
+        format="%(asctime)s - %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S",
     )
 
